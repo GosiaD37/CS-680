@@ -1,0 +1,108 @@
+
+import argparse
+import csv
+import heapq
+import sys
+from dataclasses import dataclass
+from time import perf_counter_ns
+
+
+@dataclass
+class SearchResult:
+    matches: list[str]
+    searched: int
+
+
+def load_heap(filename, warnings=None):
+   
+    words = []
+    with open(filename, newline='', encoding='utf-8-sig') as source:
+        reader = csv.reader(source, delimiter='|')
+        for line, row in enumerate(reader, 1):
+            if line == 1 and [v.strip().lower() for v in row] == ['sequence', 'data']:
+                continue
+            if len(row) != 2:
+                raise ValueError(f'Line {line}: expected two pipe-delimited fields')
+            sequence, word = (v.strip() for v in row)
+            try:
+                int(sequence)
+            except ValueError as error:
+                raise ValueError(f'Line {line}: sequence must be an integer') from error
+            if not word:
+                if warnings is not None:
+                    warnings.append(f'Line {line}: empty data field skipped')
+                continue
+            if len(word.split()) != 1:
+                raise ValueError(f'Line {line}: data must be a single nonempty word')
+            words.append(word)
+    heapq.heapify(words)
+    return words
+
+
+def search_heap(heap, word, prune=True):
+    
+    if not word or len(word.split()) != 1 or word != word.strip():
+        raise ValueError('Enter one nonempty word without surrounding whitespace')
+    stack = [0] if heap else []
+    matches = []
+    searched = 0
+    while stack:
+        index = stack.pop()
+        value = heap[index]
+        searched += 1
+        if prune and value > word:
+            continue
+        if value == word:
+            matches.append(value)
+        # Push right first so the left child is visited first.
+        right, left = 2 * index + 2, 2 * index + 1
+        if right < len(heap):
+            stack.append(right)
+        if left < len(heap):
+            stack.append(left)
+    return SearchResult(matches, searched)
+
+
+def display(result, elapsed_ms):
+    for value in result.matches:
+        print(f'Data: {value}')
+    if not result.matches:
+        print('Value was not located within the data set.')
+    print(f'Matches: {len(result.matches)}')
+    print(f'Records searched: {result.searched}')
+    print(f'Search time: {elapsed_ms:.6f} ms')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('file', help='Path to a pipe-delimited data file')
+    parser.add_argument('--word', help='Exact case-sensitive word to find')
+    args = parser.parse_args()
+    try:
+        start = perf_counter_ns()
+        warnings = []
+        heap = load_heap(args.file, warnings)
+        for warning in warnings:
+            print(f'Warning: {warning}')
+        print(f'Records loaded: {len(heap)}')
+        print(f'Load and heapify time: {(perf_counter_ns()-start)/1e6:.3f} ms')
+        while True:
+            word = args.word if args.word is not None else input('Word to search (Enter to quit): ').strip()
+            if not word and args.word is None:
+                break
+            start = perf_counter_ns()
+            result = search_heap(heap, word)
+            elapsed = (perf_counter_ns() - start) / 1e6
+            display(result, elapsed)
+            if args.word is not None:
+                break
+    except (OSError, UnicodeError, csv.Error, ValueError) as error:
+        print(f'Error: {error}', file=sys.stderr)
+        return 1
+    except (EOFError, KeyboardInterrupt):
+        print('\nSearch ended.')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
