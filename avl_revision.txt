@@ -1,0 +1,174 @@
+class WordNode:
+    def __init__(self, word):
+        self.word = word
+        self.occurrences = 1
+        self.left = None
+        self.right = None
+        self.height = 1
+
+class WordTree:
+    def __init__(self):
+        self.root = None
+        self.records = 0
+        self.unique_words = 0
+
+    def height_of(self, node):
+        return node.height if node is not None else 0
+
+    def refresh_height(self, node):
+        left_height = self.height_of(node.left)
+        right_height = self.height_of(node.right)
+        node.height = (left_height + 1) if left_height > right_height else (right_height + 1)
+
+    def balance_of(self, node):
+        return self.height_of(node.left) - self.height_of(node.right)
+
+    def turn_right(self, top):
+        child = top.left
+        middle = child.right
+        child.right = top
+        top.left = middle
+        self.refresh_height(top)
+        self.refresh_height(child)
+        return child
+
+    def turn_left(self, top):
+        child = top.right
+        middle = child.left
+        child.left = top
+        top.right = middle
+        self.refresh_height(top)
+        self.refresh_height(child)
+        return child
+
+    def rebalance(self, node):
+        self.refresh_height(node)
+        difference = self.balance_of(node)
+        if difference > 1:
+            if self.balance_of(node.left) < 0:
+                node.left = self.turn_left(node.left)
+            return self.turn_right(node)
+        if difference < -1:
+            if self.balance_of(node.right) > 0:
+                node.right = self.turn_right(node.right)
+            return self.turn_left(node)
+        return node
+
+    def add_word(self, word):
+        self.root = self._place_word(self.root, word)
+        self.records += 1
+
+    def _place_word(self, node, word):
+        if node is None:
+            self.unique_words += 1
+            return WordNode(word)
+        if word == node.word:
+            node.occurrences += 1
+            return node
+        if word < node.word:
+            node.left = self._place_word(node.left, word)
+        else:
+            node.right = self._place_word(node.right, word)
+        return self.rebalance(node)
+
+    def load_file(self, filename):
+        # We construct a separate temporary tree so that an exception during load preserves the current state of the main tree.
+        temp_tree = WordTree()
+        ignored_lines = 0
+        try:
+            with open(filename, "r", encoding="utf-8-sig") as input_file:
+                for line in input_file:
+                    clean_line = line.strip()
+                    if clean_line == "":
+                        continue
+                    seq, sep, word = clean_line.partition("|")
+                    seq = seq.strip()
+                    word = word.strip()
+                    if seq.lower() == "sequence" and word.lower() == "data":
+                        continue
+                    if sep == "" or not seq.isdecimal() or word == "" or "|" in word:
+                        ignored_lines += 1
+                        continue
+                    # Only the word itself is added to the tree structure.
+                    temp_tree.add_word(word)
+        except (OSError, UnicodeError) as err:
+            print("Cannot read file: ", err)
+            return False
+
+        self.root = temp_tree.root
+        self.records = temp_tree.records
+        self.unique_words = temp_tree.unique_words
+
+        print("\nLines read:", self.records)
+        print("Different words:", self.unique_words)
+        print("Ignored lines:", ignored_lines)
+        print("Tree height:", self.height_of(self.root))
+        print("Comparison is case sensitive.")
+        return True
+
+    def find_word(self, keyword):
+        current_node = self.root
+        nodes_checked = 0
+        while current_node is not None:
+            nodes_checked += 1
+            if keyword == current_node.word:
+                return current_node.occurrences, nodes_checked
+            if keyword < current_node.word:
+                current_node = current_node.left
+            else:
+                current_node = current_node.right
+        return 0, nodes_checked
+
+    def print_alphabetical(self):
+        if self.root is None:
+            print("The tree is currently empty.")
+            return
+        print("\nAlphabetical list of words:")
+        self._traverse_in_order(self.root)
+
+    def _traverse_in_order(self, node):
+        if node is None:
+            return
+        self._traverse_in_order(node.left)
+        print(f"{node.word} | occurrences: {node.occurrences}")
+        self._traverse_in_order(node.right)
+
+
+def main():
+    tree = WordTree()
+    path = input("Enter path to file: ").strip()
+    if len(path) >= 2 and path[0] == path[-1] and path[0] in ("'", '"'):
+        path = path[1:-1]
+    if not tree.load_file(path):
+        return
+    if tree.records == 0:
+        print("There was no data to process.")
+        return
+    while True:
+        print("\n1. Search for a word")
+        print("2. Display alphabetized output")
+        print("3. Exit")
+        choice = input("Select option 1, 2, or 3: ").strip()
+        if choice == "1":
+            search_term = input("Enter word to search for: ").strip()
+            if search_term == "":
+                print("No search term entered.")
+                continue
+            occurrences, nodes_checked = tree.find_word(search_term)
+            if occurrences == 0:
+                print(f"\n'{search_term}' not found.")
+            else:
+                print(f"\n'{search_term}' found.")
+            print("Occurrences:", occurrences)
+            print("Nodes checked:", nodes_checked)
+        elif choice == "2":
+            tree.print_alphabetical()
+        elif choice == "3":
+            print("Exiting program.")
+            break
+        else:
+            print("Invalid selection.")
+
+
+if __name__ == "__main__":
+    main()
